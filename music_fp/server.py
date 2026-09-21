@@ -118,4 +118,11 @@ def api_discover():
 def create_app(start_worker: bool = True) -> Flask:
     if start_worker:
         _worker.start()
+        # Auto-seed on startup if the queue is empty
+        import threading
+        from .discover import run_discovery_cycle
+        def _seed_if_empty():
+            if pending_candidate_count() == 0:
+                run_discovery_cycle(max_new=30, metadata_only=True)
+        threading.Thread(target=_seed_if_empty, daemon=True, name="autoseed").start()
     return app
