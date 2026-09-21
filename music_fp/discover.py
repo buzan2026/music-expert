@@ -19,7 +19,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from .config import DATA_DIR, ensure_dirs
 
@@ -93,7 +93,7 @@ def _lastfm_similar_artists(artist: str, limit: int = 5) -> list[str]:
         return []
 
 
-def _yt_search_metadata(query: str, n: int = SEARCH_PER_ARTIST) -> list[dict]:
+def _yt_search_metadata(query: str, n: int = SEARCH_PER_ARTIST) -> List[dict]:
     """Run yt-dlp metadata search without downloading; return list of info dicts."""
     cmd = [
         "yt-dlp",
@@ -115,7 +115,7 @@ def _yt_search_metadata(query: str, n: int = SEARCH_PER_ARTIST) -> list[dict]:
     return items
 
 
-def _liked_artists() -> list[str]:
+def _liked_artists() -> List[str]:
     from .store import get_all_tracks
     tracks = get_all_tracks(label_filter=["top10", "liked"])
     seen, artists = set(), []

@@ -5,7 +5,7 @@ import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -175,7 +175,7 @@ def get_track_by_source(source: str) -> Optional[dict]:
 def get_all_tracks(
     labeled_only: bool = False,
     label_filter: Optional[list] = None,
-) -> list[dict]:
+) -> List[dict]:
     conn = _connect()
     q = "SELECT * FROM tracks"
     params: list = []
@@ -237,7 +237,7 @@ def get_vote_counts() -> dict:
     return {r["vote"]: r["n"] for r in rows}
 
 
-def get_labeled_for_training() -> tuple[np.ndarray, np.ndarray]:
+def get_labeled_for_training() -> Tuple[np.ndarray, np.ndarray]:
     """Return (X, y) where y: 1=liked, 0=disliked. Excludes skipped/untagged."""
     tracks = get_all_tracks(label_filter=["liked", "top10", "disliked", "hors_sujet"])
     X, y = [], []

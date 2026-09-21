@@ -35,7 +35,7 @@ Total: 176 dimensions
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -45,7 +45,7 @@ FEATURE_VERSION = 2
 FEATURE_DIM = 176
 
 
-def _load(path: Path, sr: int = SAMPLE_RATE, duration: Optional[float] = None) -> tuple[np.ndarray, int]:
+def _load(path: Path, sr: int = SAMPLE_RATE, duration: Optional[float] = None) -> Tuple[np.ndarray, int]:
     import librosa
     y, sr_out = librosa.load(str(path), sr=sr, mono=True, duration=duration)
     if duration is None:
@@ -223,12 +223,12 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 
 def predict_label(
     query_vec: np.ndarray,
-    reference_tracks: list[dict],
+    reference_tracks: List[dict],
     top_k: int = 5,
 ) -> dict:
-    liked_sims: list[float] = []
-    disliked_sims: list[float] = []
-    neighbors: list[tuple[float, dict]] = []
+    liked_sims: List[float] = []
+    disliked_sims: List[float] = []
+    neighbors: List[Tuple[float, dict]] = []
 
     for track in reference_tracks:
         if track["features"] is None:

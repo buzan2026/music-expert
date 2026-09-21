@@ -4,7 +4,7 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 from .config import AUDIO_CACHE_DIR, ensure_dirs
 
@@ -26,7 +26,7 @@ def _sanitize(name: str) -> str:
     return re.sub(r"[^\w\-. ]", "_", name)[:80]
 
 
-def fetch(source: str, progress: bool = True) -> tuple[Path, Optional[str]]:
+def fetch(source: str, progress: bool = True) -> Tuple[Path, Optional[str]]:
     """
     Return (local_audio_path, title).
 

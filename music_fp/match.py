@@ -1,7 +1,7 @@
 """Matcher v0 — distance euclidienne + cosine d'un candidat vs étalons top10."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -39,7 +39,7 @@ FEATURE_NAMES = [
 ]
 
 
-def _normalise(vectors: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _normalise(vectors: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Z-score normalise; return (normalised, mean, std)."""
     mu = vectors.mean(axis=0)
     sigma = vectors.std(axis=0)
@@ -50,7 +50,7 @@ def _normalise(vectors: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]
 def match_report(
     query_vec: np.ndarray,
     query_title: str,
-    top10_tracks: list[dict],
+    top10_tracks: List[dict],
 ) -> dict:
     """
     Compute distances from query to each top10 etalon.
