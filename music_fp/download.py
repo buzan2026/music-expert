@@ -17,6 +17,11 @@ def is_youtube_url(source: str) -> bool:
     return bool(_YOUTUBE_RE.match(source))
 
 
+def is_ytdlp_source(source: str) -> bool:
+    """True for YouTube URLs and yt-dlp search strings (ytsearch:...)."""
+    return is_youtube_url(source) or source.lower().startswith("ytsearch")
+
+
 def _sanitize(name: str) -> str:
     return re.sub(r"[^\w\-. ]", "_", name)[:80]
 
@@ -28,7 +33,7 @@ def fetch(source: str, progress: bool = True) -> tuple[Path, Optional[str]]:
     For a local file: validate existence and supported format.
     For a YouTube URL: download best-quality audio to the cache dir (skip if cached).
     """
-    if not is_youtube_url(source):
+    if not is_ytdlp_source(source):
         p = Path(source).resolve()
         if not p.exists():
             raise FileNotFoundError(f"File not found: {p}")
@@ -39,7 +44,7 @@ def fetch(source: str, progress: bool = True) -> tuple[Path, Optional[str]]:
 
     ensure_dirs()
 
-    # Use yt-dlp to get the video id as stable cache key
+    # Resolve search query to a stable video_id first
     video_id = _extract_video_id(source)
     cached = list(AUDIO_CACHE_DIR.glob(f"{video_id}.*"))
     if cached:
