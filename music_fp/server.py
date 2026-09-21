@@ -20,12 +20,14 @@ _worker = DiscoveryWorker()
 
 
 def _track_json(track: dict) -> dict:
+    video_id = track.get("video_id") or None
     return {
         "track_id": track["id"],
         "title": track.get("title") or "Titre inconnu",
         "artist": track.get("artist") or "",
         "thumbnail_url": track.get("thumbnail_url") or None,
         "duration": track.get("duration"),
+        "video_id": video_id,
     }
 
 

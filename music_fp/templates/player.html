@@ -3,351 +3,420 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>music-fp</title>
+<title>music-boris</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg: #0a0a0a;
-    --surface: #141414;
-    --surface2: #1e1e1e;
-    --text: #f0f0f0;
-    --muted: #6b7280;
-    --liked: #22c55e;
+    --bg:       #080808;
+    --card:     #101010;
+    --surface:  #181818;
+    --text:     #e8e8e8;
+    --muted:    #505050;
+    --liked:    #22c55e;
     --disliked: #ef4444;
-    --skip: #9ca3af;
-    --accent: #8b5cf6;
-    --radius: 16px;
-    --transition: 280ms cubic-bezier(.4,0,.2,1);
+    --skip:     #6b7280;
+    --accent:   #a855f7;
+    --radius:   20px;
+    --dur:      260ms;
   }
 
   body {
     background: var(--bg);
     color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     min-height: 100dvh;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     padding: 16px;
+    gap: 16px;
   }
 
-  #card {
-    width: 100%;
-    max-width: 400px;
-    background: var(--surface);
-    border-radius: var(--radius);
-    overflow: hidden;
-    box-shadow: 0 24px 60px rgba(0,0,0,.6);
-    transition: opacity var(--transition), transform var(--transition);
-  }
-  #card.fade-out { opacity: 0; transform: scale(.96); }
-
-  /* Album art */
-  #art-wrap {
-    position: relative;
-    aspect-ratio: 1;
-    background: linear-gradient(135deg, var(--surface2), #0a0a2e);
-    overflow: hidden;
-  }
-  #art {
-    width: 100%; height: 100%;
-    object-fit: cover;
-    display: block;
-    transition: opacity 400ms;
-  }
-  #art.hidden { opacity: 0; }
-  #art-placeholder {
-    position: absolute; inset: 0;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 72px;
+  /* ── Header ── */
+  #header {
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    color: var(--muted);
     user-select: none;
   }
 
-  /* Progress bar (audio) */
-  #progress-wrap {
-    height: 3px;
-    background: var(--surface2);
-    cursor: pointer;
+  /* ── Card ── */
+  #card {
+    width: 100%;
+    max-width: 480px;
+    background: var(--card);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: 0 32px 80px rgba(0,0,0,.75);
+    transition: opacity var(--dur) cubic-bezier(.4,0,.2,1),
+                transform var(--dur) cubic-bezier(.4,0,.2,1);
   }
-  #progress-bar {
-    height: 100%;
-    width: 0%;
-    background: var(--accent);
-    transition: width .5s linear;
+  #card.out {
+    opacity: 0;
+    transform: scale(.96) translateY(10px);
+    pointer-events: none;
   }
 
-  /* Track info */
-  #info {
-    padding: 20px 24px 4px;
+  /* ── YouTube player box ── */
+  #player-box {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: #000;
+    overflow: hidden;
   }
-  #track-title {
-    font-size: 1.2rem;
+  /* The iframe injected by YT API must fill the box */
+  #player-box > iframe {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    border: none !important;
+  }
+  #no-video {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 72px;
+    background: linear-gradient(135deg, #111, #0a0a22);
+    transition: opacity 300ms;
+  }
+  #no-video.hidden { opacity: 0; pointer-events: none; }
+
+  /* ── Track info ── */
+  #track-meta {
+    padding: 20px 24px 8px;
+    min-height: 68px;
+  }
+  #artist {
+    font-size: .8rem;
     font-weight: 600;
-    line-height: 1.3;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: .06em;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  #track-artist {
-    font-size: .9rem;
-    color: var(--muted);
+  #title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    line-height: 1.3;
     margin-top: 4px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
-  /* Buttons */
+  /* ── Vote buttons ── */
   #buttons {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
-    gap: 10px;
-    padding: 20px 24px 24px;
+    gap: 8px;
+    padding: 14px 16px 16px;
   }
-  .vote-btn {
+  .btn {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    padding: 14px 8px;
+    gap: 5px;
+    padding: 14px 6px 11px;
     border: none;
-    border-radius: 12px;
-    background: var(--surface2);
+    border-radius: 14px;
+    background: var(--surface);
     color: var(--text);
-    font-size: .8rem;
-    font-weight: 500;
     cursor: pointer;
-    transition: background var(--transition), transform 120ms;
+    transition: filter 150ms, transform 100ms;
     -webkit-tap-highlight-color: transparent;
+    outline: none;
   }
-  .vote-btn:hover { filter: brightness(1.2); }
-  .vote-btn:active { transform: scale(.94); }
-
-  #btn-liked  { --c: var(--liked); }
-  #btn-dislike{ --c: var(--disliked); }
-  #btn-skip   { --c: var(--skip); }
-
-  .vote-btn .icon {
-    font-size: 1.5rem;
-    line-height: 1;
-    filter: drop-shadow(0 0 8px var(--c, transparent));
-  }
-  .vote-btn .key {
-    font-size: .65rem;
+  .btn:hover { filter: brightness(1.3); }
+  .btn:active { transform: scale(.91); }
+  .btn .icon { font-size: 1.65rem; line-height: 1; }
+  .btn .label { font-size: .78rem; font-weight: 500; letter-spacing: .01em; }
+  .btn kbd {
+    font-size: .6rem;
     color: var(--muted);
-    font-weight: 400;
+    font-family: inherit;
+    background: none;
+    border: none;
+    padding: 0;
   }
 
-  /* Footer stats */
+  #btn-dislike .icon { filter: drop-shadow(0 0 8px var(--disliked)); }
+  #btn-skip    .icon { filter: drop-shadow(0 0 8px var(--skip)); }
+  #btn-like    .icon { filter: drop-shadow(0 0 8px var(--liked)); }
+
+  /* ── Footer stats ── */
   #footer {
-    padding: 0 24px 18px;
+    padding: 2px 20px 16px;
     display: flex;
-    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
     font-size: .72rem;
     color: var(--muted);
+    flex-wrap: wrap;
   }
-  #footer span { display: flex; align-items: center; gap: 4px; }
-  #dot-discovering {
-    width: 6px; height: 6px; border-radius: 50%;
+  #footer .sep { flex: 1; }
+  .stat-liked    { color: #166534; }
+  .stat-disliked { color: #7f1d1d; }
+  #dot-disc {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
     background: var(--accent);
-    animation: pulse 1.4s ease-in-out infinite;
-    display: none;
+    margin-right: 4px;
+    opacity: 0;
+    transition: opacity 300ms;
+    animation: pulse 1.5s ease-in-out infinite;
   }
-  #dot-discovering.active { display: inline-block; }
+  #dot-disc.active { opacity: 1; }
   @keyframes pulse {
-    0%, 100% { opacity: .3; transform: scale(.8); }
-    50% { opacity: 1; transform: scale(1.2); }
+    0%, 100% { transform: scale(.8); }
+    50% { transform: scale(1.4); }
   }
 
-  /* Empty state */
-  #empty {
+  /* ── Empty state ── */
+  #empty-state {
     display: none;
+    width: 100%;
+    max-width: 480px;
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 52px 24px;
+    text-align: center;
+    box-shadow: 0 32px 80px rgba(0,0,0,.75);
     flex-direction: column;
     align-items: center;
-    padding: 48px 24px;
-    gap: 12px;
-    text-align: center;
+    gap: 10px;
   }
-  #empty.visible { display: flex; }
-  #empty .icon { font-size: 48px; }
-  #empty p { color: var(--muted); font-size: .9rem; line-height: 1.5; }
-
-  /* Hidden audio element */
-  audio { display: none; }
+  #empty-state .icon { font-size: 52px; }
+  #empty-state .main { font-size: 1rem; font-weight: 600; }
+  #empty-state .sub  { font-size: .85rem; color: var(--muted); line-height: 1.6; }
 </style>
 </head>
 <body>
 
+<div id="header">music-boris</div>
+
 <div id="card">
-  <div id="art-wrap">
-    <span id="art-placeholder">🎵</span>
-    <img id="art" class="hidden" alt="" loading="lazy">
+  <div id="player-box">
+    <div id="yt-player"></div>
+    <div id="no-video">🎵</div>
   </div>
 
-  <div id="progress-wrap">
-    <div id="progress-bar"></div>
-  </div>
-
-  <div id="info">
-    <div id="track-title">Chargement…</div>
-    <div id="track-artist"></div>
+  <div id="track-meta">
+    <div id="artist"></div>
+    <div id="title">Chargement…</div>
   </div>
 
   <div id="buttons">
-    <button class="vote-btn" id="btn-dislike" data-vote="disliked">
+    <button class="btn" id="btn-dislike" data-vote="disliked">
       <span class="icon">👎</span>
-      <span>Non</span>
-      <span class="key">← D</span>
+      <span class="label">Pas pour moi</span>
+      <kbd>D ←</kbd>
     </button>
-    <button class="vote-btn" id="btn-skip" data-vote="skipped">
+    <button class="btn" id="btn-skip" data-vote="skipped">
       <span class="icon">⏭</span>
-      <span>Passe</span>
-      <span class="key">Espace</span>
+      <span class="label">Passe</span>
+      <kbd>espace</kbd>
     </button>
-    <button class="vote-btn" id="btn-liked" data-vote="liked">
+    <button class="btn" id="btn-like" data-vote="liked">
       <span class="icon">👍</span>
-      <span>J'aime</span>
-      <span class="key">L →</span>
+      <span class="label">J'aime</span>
+      <kbd>L →</kbd>
     </button>
   </div>
 
   <div id="footer">
-    <span id="stat-votes">0 votés</span>
+    <span class="stat-liked">♥ <span id="n-liked">0</span></span>
+    <span class="stat-disliked">✗ <span id="n-disliked">0</span></span>
+    <span>⏭ <span id="n-skipped">0</span></span>
+    <span class="sep"></span>
     <span>
-      <span id="dot-discovering"></span>
-      <span id="stat-queue">0 en file</span>
+      <span id="dot-disc"></span><span id="n-queue">0</span> en file
     </span>
-  </div>
-
-  <div id="empty">
-    <span class="icon">🔍</span>
-    <p>Découverte de nouveaux morceaux en cours…<br>Reviens dans quelques minutes.</p>
   </div>
 </div>
 
-<audio id="player" preload="auto"></audio>
+<div id="empty-state">
+  <div class="icon">🔍</div>
+  <p class="main">Découverte en cours…</p>
+  <p class="sub">De nouveaux morceaux arrivent bientôt.<br>Reviens dans quelques instants.</p>
+</div>
+
+<!-- YouTube IFrame API -->
+<script>
+(function() {
+  const s = document.createElement('script');
+  s.src = 'https://www.youtube.com/iframe_api';
+  document.head.appendChild(s);
+})();
+</script>
 
 <script>
-const state = { current: null, voting: false, sessionVotes: 0 };
+// ── State ───────────────────────────────────────────────────────────────────
+const S = {
+  current:   null,   // current track object from API
+  voting:    false,  // lock to prevent double votes
+  ytPlayer:  null,   // YT.Player instance
+  ytReady:   false,  // player API ready
+};
 
-async function loadCurrent() {
-  try {
-    const r = await fetch('/api/current');
-    if (!r.ok) { showEmpty(); return; }
-    const data = await r.json();
-    if (!data.track_id) { showEmpty(); return; }
-    state.current = data;
-    render(data);
-  } catch { showEmpty(); }
+// ── YouTube IFrame API ───────────────────────────────────────────────────────
+window.onYouTubeIframeAPIReady = function() {
+  S.ytPlayer = new YT.Player('yt-player', {
+    height: '315',
+    width:  '560',
+    playerVars: {
+      autoplay:       1,
+      rel:            0,
+      modestbranding: 1,
+      playsinline:    1,
+      fs:             1,
+      iv_load_policy: 3,
+    },
+    events: {
+      onReady(e) {
+        S.ytReady = true;
+        // If a track was loaded before the player was ready, play it now
+        if (S.current?.video_id) {
+          e.target.loadVideoById(S.current.video_id);
+          document.getElementById('no-video').classList.add('hidden');
+        }
+      },
+    },
+  });
+};
+
+function ytLoad(videoId) {
+  if (!videoId) return;
+  document.getElementById('no-video').classList.add('hidden');
+  if (S.ytReady && S.ytPlayer) {
+    S.ytPlayer.loadVideoById(videoId);
+  }
+  // else: onReady will call loadVideoById when it fires
 }
 
-async function vote(v) {
-  if (!state.current || state.voting) return;
-  state.voting = true;
-  const trackId = state.current.track_id;
-
-  // Animate out
-  document.getElementById('card').classList.add('fade-out');
-
-  try {
-    const r = await fetch('/api/vote', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ track_id: trackId, vote: v })
-    });
-    const data = await r.json();
-    state.sessionVotes++;
-
-    if (data.next) {
-      state.current = data.next;
-      render(data.next);
-      updateStats(data.stats);
-    } else {
-      showEmpty();
-    }
-  } catch { showEmpty(); }
-
-  document.getElementById('card').classList.remove('fade-out');
-  state.voting = false;
+// ── API helpers ──────────────────────────────────────────────────────────────
+async function fetchCurrent() {
+  const r = await fetch('/api/current');
+  if (!r.ok) return null;
+  const d = await r.json();
+  return d.track_id ? d : null;
 }
 
-function render(track) {
-  document.getElementById('track-title').textContent = track.title || 'Titre inconnu';
-  document.getElementById('track-artist').textContent = track.artist || '';
+async function sendVote(trackId, vote) {
+  const r = await fetch('/api/vote', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ track_id: trackId, vote }),
+  });
+  return r.json();
+}
 
-  const art = document.getElementById('art');
-  const placeholder = document.getElementById('art-placeholder');
-  if (track.thumbnail_url) {
-    art.onload = () => { art.classList.remove('hidden'); placeholder.style.opacity = '0'; };
-    art.onerror = () => { art.classList.add('hidden'); placeholder.style.opacity = '1'; };
-    art.src = track.thumbnail_url;
+// ── Rendering ────────────────────────────────────────────────────────────────
+function renderTrack(track) {
+  document.getElementById('artist').textContent = track.artist || '';
+  document.getElementById('title').textContent  = track.title  || 'Titre inconnu';
+
+  if (track.video_id) {
+    ytLoad(track.video_id);
   } else {
-    art.classList.add('hidden');
-    placeholder.style.opacity = '1';
-    placeholder.textContent = artistEmoji(track.artist);
+    document.getElementById('no-video').classList.remove('hidden');
   }
 
-  // Audio
-  const player = document.getElementById('player');
-  player.src = `/audio/${track.track_id}`;
-  player.play().catch(() => {});  // autoplay may be blocked; OK
-
-  document.getElementById('progress-bar').style.width = '0%';
-  player.ontimeupdate = () => {
-    if (player.duration) {
-      const pct = (player.currentTime / player.duration) * 100;
-      document.getElementById('progress-bar').style.width = pct + '%';
-    }
-  };
-
-  document.getElementById('empty').classList.remove('visible');
-  updateStats(track.stats);
+  if (track.stats) updateStats(track.stats);
 }
 
 function updateStats(stats) {
-  if (!stats) return;
-  const v = stats.total_votes || state.sessionVotes;
-  document.getElementById('stat-votes').textContent = v + (v === 1 ? ' voté' : ' votés');
-  document.getElementById('stat-queue').textContent = (stats.queue_size || 0) + ' en file';
-  const dot = document.getElementById('dot-discovering');
-  dot.classList.toggle('active', !!stats.discovering);
+  document.getElementById('n-liked').textContent    = stats.liked    ?? 0;
+  document.getElementById('n-disliked').textContent = stats.disliked ?? 0;
+  document.getElementById('n-skipped').textContent  = stats.skipped  ?? 0;
+  document.getElementById('n-queue').textContent    = stats.queue_size ?? 0;
+  document.getElementById('dot-disc').classList.toggle('active', !!stats.discovering);
+}
+
+function showCard() {
+  document.getElementById('card').style.display       = '';
+  document.getElementById('empty-state').style.display = 'none';
 }
 
 function showEmpty() {
-  document.getElementById('empty').classList.add('visible');
-  // Poll every 5s for new candidates
+  document.getElementById('card').style.display       = 'none';
+  document.getElementById('empty-state').style.display = 'flex';
   setTimeout(loadCurrent, 5000);
 }
 
-function artistEmoji(artist) {
-  const emojis = ['🎵', '🎸', '🎹', '🎷', '🥁', '🎺', '🎻', '🎤'];
-  if (!artist) return '🎵';
-  return emojis[artist.charCodeAt(0) % emojis.length];
+// ── Load first track ─────────────────────────────────────────────────────────
+async function loadCurrent() {
+  try {
+    const data = await fetchCurrent();
+    if (data) {
+      S.current = data;
+      renderTrack(data);
+      showCard();
+    } else {
+      showEmpty();
+    }
+  } catch {
+    showEmpty();
+  }
 }
 
-// Progress bar click → seek
-document.getElementById('progress-wrap').addEventListener('click', (e) => {
-  const player = document.getElementById('player');
-  if (!player.duration) return;
-  const rect = e.currentTarget.getBoundingClientRect();
-  player.currentTime = ((e.clientX - rect.left) / rect.width) * player.duration;
-});
+// ── Vote ─────────────────────────────────────────────────────────────────────
+async function vote(v) {
+  if (!S.current || S.voting) return;
+  S.voting = true;
 
-// Keyboard shortcuts
-document.addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'INPUT') return;
+  const card = document.getElementById('card');
+
+  // Animate out + fire API call in parallel
+  card.classList.add('out');
+  const voteP = sendVote(S.current.track_id, v).catch(() => ({}));
+
+  // Wait for CSS transition
+  await new Promise(res => setTimeout(res, 240));
+
+  let data = {};
+  try { data = await voteP; } catch {}
+
+  if (data.next) {
+    S.current = data.next;
+    renderTrack(data.next);
+    if (data.stats) updateStats(data.stats);
+    // Brief pause before fade-in so DOM updates are painted
+    await new Promise(res => setTimeout(res, 16));
+    card.classList.remove('out');
+    showCard();
+  } else {
+    card.classList.remove('out');
+    if (data.stats) updateStats(data.stats);
+    showEmpty();
+  }
+
+  S.voting = false;
+}
+
+// ── Keyboard shortcuts ───────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   if (e.key === 'l' || e.key === 'L' || e.key === 'ArrowRight') vote('liked');
   if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowLeft')  vote('disliked');
   if (e.key === ' ' || e.key === 'ArrowUp') { e.preventDefault(); vote('skipped'); }
 });
 
-// Button clicks
-document.querySelectorAll('.vote-btn').forEach(btn => {
+document.querySelectorAll('.btn').forEach(btn => {
   btn.addEventListener('click', () => vote(btn.dataset.vote));
 });
 
-// Boot
+// ── Boot ─────────────────────────────────────────────────────────────────────
 loadCurrent();
 </script>
 </body>

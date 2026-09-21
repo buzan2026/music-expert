@@ -2,15 +2,15 @@
 Candidate discovery worker.
 
 Algorithm:
-  1. Collect liked artists from DB (top10 + liked labels)
-  2. For each artist: yt-dlp metadata search (no download) → candidate URLs
+  1. Collect liked artists from DB (top10 + liked labels).
+     Falls back to SEED_ARTISTS when no liked artists yet.
+  2. For each artist: yt-dlp metadata search → candidate metadata
   3. Filter already-seen
-  4. Download + fast fingerprint (mix only, no stems)
-  5. Score with current model (or cosine heuristic)
-  6. Enqueue top-N
+  4. Enqueue (metadata-only, no download by default)
+  5. Optionally: download + fingerprint for ML scoring
+     (enabled by MUSIC_FP_FINGERPRINT=1 env var)
 
-Also supports Last.fm artist.getSimilar when LASTFM_API_KEY is set
-(env var or ~/.music-fp/lastfm_key).
+Also supports Last.fm artist.getSimilar when LASTFM_API_KEY is set.
 """
 
 import json
@@ -23,10 +23,46 @@ from typing import Optional
 
 from .config import DATA_DIR, ensure_dirs
 
-MIN_QUEUE_SIZE = 5       # refill when queue drops below this
-REFILL_TARGET = 10       # fill up to this many pending candidates
-SEARCH_PER_ARTIST = 8    # yt-dlp ytsearch results per artist
-SCORE_THRESHOLD = 0.35   # discard candidates predicted clearly disliked
+MIN_QUEUE_SIZE = 5
+REFILL_TARGET = 15
+SEARCH_PER_ARTIST = 8
+SCORE_THRESHOLD = 0.35
+
+# Seed artists that match Boris's taste profile (funky bass, dry drums,
+# sensual vocals, mid-up tempo, readable mix).
+SEED_ARTISTS = [
+    "Jamie Woon",
+    "RAYE",
+    "Robin Thicke",
+    "Amber Mark",
+    "Tom Misch",
+    "Cleo Sol",
+    "Mahalia",
+    "Joy Crookes",
+    "Masego",
+    "Daniel Caesar",
+    "Jorja Smith",
+    "Leon Bridges",
+    "Sault",
+    "Yebba",
+    "H.E.R.",
+    "Lucky Daye",
+    "SiR",
+    "Ari Lennox",
+    "Sudan Archives",
+    "Samm Henshaw",
+    "Kojey Radical",
+    "Pa Salieu",
+    "Knucks",
+    "Greentea Peng",
+    "Biig Piig",
+]
+
+# Title fragments that indicate unwanted content
+_SKIP_KEYWORDS = frozenset([
+    "remix", "cover", "tribute", "karaoke", "instrumental",
+    "lyrics", "lyric video", "reaction", "tutorial",
+])
 
 
 def _lastfm_key() -> Optional[str]:
@@ -91,6 +127,45 @@ def _liked_artists() -> list[str]:
     return artists
 
 
+def _enqueue_from_metadata(info: dict, seed_artist: str) -> bool:
+    """
+    Enqueue a YouTube track from yt-dlp flat-playlist metadata only.
+    No audio download or fingerprinting needed.
+    """
+    from .store import already_seen, upsert_track, enqueue_candidate
+
+    vid = info.get("id")
+    if not vid or len(vid) != 11:
+        return False
+
+    url = f"https://www.youtube.com/watch?v={vid}"
+    if already_seen(url):
+        return False
+
+    title = info.get("title") or info.get("fulltitle") or ""
+    low = title.lower()
+    if any(kw in low for kw in _SKIP_KEYWORDS):
+        return False
+
+    duration = info.get("duration")
+    if duration and (duration < 60 or duration > 600):
+        return False
+
+    try:
+        track_id = upsert_track(
+            source=url,
+            title=title,
+            duration=float(duration) if duration else None,
+            label="untagged",
+            features=None,
+            artist=seed_artist,
+        )
+        enqueue_candidate(track_id, score=0.5, seed_artist=seed_artist, source="yt_metadata")
+        return True
+    except Exception:
+        return False
+
+
 def _fingerprint_and_enqueue(url: str, seed_artist: str) -> bool:
     """Download, fingerprint (mix only), score, and enqueue. Returns True on success."""
     from .store import already_seen, upsert_track, enqueue_candidate
@@ -124,7 +199,6 @@ def _fingerprint_and_enqueue(url: str, seed_artist: str) -> bool:
         liked = get_all_tracks(label_filter=["top10", "liked"])
 
     score = model.score(features, liked_tracks=liked)
-
     if score < SCORE_THRESHOLD:
         return False
 
@@ -137,7 +211,6 @@ def _fingerprint_and_enqueue(url: str, seed_artist: str) -> bool:
         artist=seed_artist,
         audio_path=str(audio_path),
     )
-
     enqueue_candidate(track_id, score=score, seed_artist=seed_artist)
     return True
 
@@ -145,7 +218,9 @@ def _fingerprint_and_enqueue(url: str, seed_artist: str) -> bool:
 def run_discovery_cycle(max_new: int = REFILL_TARGET) -> int:
     """
     Run one discovery cycle. Returns number of candidates added.
-    Blocks until done — call from a background thread.
+
+    Uses metadata-only enqueueing by default (fast, no download).
+    Set MUSIC_FP_FINGERPRINT=1 to enable audio fingerprinting for scoring.
     """
     from .store import pending_candidate_count
 
@@ -154,15 +229,16 @@ def run_discovery_cycle(max_new: int = REFILL_TARGET) -> int:
         return 0
 
     need = max_new - already
+    use_fingerprint = os.environ.get("MUSIC_FP_FINGERPRINT") == "1"
+
     artists = _liked_artists()
     if not artists:
-        return 0
+        artists = list(SEED_ARTISTS)
 
-    # Optionally expand with Last.fm similar artists
+    # Expand with Last.fm similar artists
     expanded = list(artists)
     for a in artists[:3]:
         expanded.extend(_lastfm_similar_artists(a, limit=3))
-    # deduplicate while preserving order
     seen_a: set = set()
     unique_artists = []
     for a in expanded:
@@ -174,21 +250,20 @@ def run_discovery_cycle(max_new: int = REFILL_TARGET) -> int:
     for artist in unique_artists:
         if added >= need:
             break
-        query = f"{artist} official audio"
+        query = f"{artist} official"
         candidates = _yt_search_metadata(query, n=SEARCH_PER_ARTIST)
         for info in candidates:
             if added >= need:
                 break
-            url = info.get("url") or info.get("webpage_url")
-            if not url:
-                # flat-playlist gives 'id' → reconstruct URL
+            if use_fingerprint:
                 vid = info.get("id")
-                if vid:
-                    url = f"https://www.youtube.com/watch?v={vid}"
-                else:
-                    continue
-            if _fingerprint_and_enqueue(url, seed_artist=artist):
-                added += 1
+                url = (info.get("url") or info.get("webpage_url") or
+                       (f"https://www.youtube.com/watch?v={vid}" if vid else None))
+                if url and _fingerprint_and_enqueue(url, seed_artist=artist):
+                    added += 1
+            else:
+                if _enqueue_from_metadata(info, seed_artist=artist):
+                    added += 1
 
     return added
 
@@ -225,5 +300,4 @@ class DiscoveryWorker:
                     self._running.clear()
             except Exception:
                 self._running.clear()
-            # Sleep 60s between checks, but wake immediately if stopped
             self._stop.wait(timeout=60)

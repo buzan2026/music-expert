@@ -356,6 +356,31 @@ def stats() -> None:
 
 
 @app.command()
+def seed(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show artists without running searches"),
+) -> None:
+    """Seed the queue from the built-in taste-profile artist list (no audio download)."""
+    from .discover import SEED_ARTISTS, run_discovery_cycle, _liked_artists
+
+    if dry_run:
+        console.print("[bold]Seed artists:[/]")
+        for a in SEED_ARTISTS:
+            console.print(f"  • {a}")
+        return
+
+    liked = _liked_artists()
+    if liked:
+        console.print(f"[dim]{len(liked)} liked artist(s) already in DB — running standard discovery.[/]")
+    else:
+        console.print(f"[dim]No liked artists yet — seeding from {len(SEED_ARTISTS)} taste-profile artists.[/]")
+
+    with console.status("Searching YouTube metadata (no download)…"):
+        added = run_discovery_cycle(max_new=30)
+
+    console.print(f"[green]✓ {added} candidate(s) added to queue.[/]")
+
+
+@app.command()
 def serve(
     port: int = typer.Option(5000, "--port", "-p"),
     host: str = typer.Option("127.0.0.1", "--host"),

@@ -112,7 +112,7 @@ def upsert_track(
     title: Optional[str],
     duration: Optional[float],
     label: str,
-    features: np.ndarray,
+    features: Optional[np.ndarray] = None,
     artist: Optional[str] = None,
     year: Optional[int] = None,
     notes: Optional[str] = None,
@@ -120,7 +120,7 @@ def upsert_track(
     audio_path: Optional[str] = None,
 ) -> int:
     conn = _connect()
-    blob = _to_blob(features)
+    blob = _to_blob(features) if features is not None else None
     video_id = _extract_video_id(source)
     thumbnail = _thumbnail(video_id)
 
