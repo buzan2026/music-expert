@@ -44,22 +44,25 @@ def fetch(source: str, progress: bool = True) -> tuple[Path, Optional[str]]:
 
     ensure_dirs()
 
-    # Resolve search query to a stable video_id first
-    video_id = _extract_video_id(source)
-    cached = list(AUDIO_CACHE_DIR.glob(f"{video_id}.*"))
-    if cached:
-        return cached[0], None  # title unknown without re-fetching metadata
+    # For direct YouTube URLs, check cache by video_id
+    if is_youtube_url(source):
+        video_id = _extract_video_id(source)
+        cached = list(AUDIO_CACHE_DIR.glob(f"{video_id}.*"))
+        if cached:
+            return cached[0], None
 
-    out_template = str(AUDIO_CACHE_DIR / f"{video_id}.%(ext)s")
+    # Use %(id)s so the filename always matches the actual video ID
+    out_template = str(AUDIO_CACHE_DIR / "%(id)s.%(ext)s")
     cmd = [
         "yt-dlp",
         "-x",                          # extract audio
         "--audio-format", "mp3",
         "--audio-quality", "0",        # best quality
         "-o", out_template,
-        "--print", "title",            # print title to stdout
+        "--print", "%(id)s",           # print video id to stdout (first line)
+        "--print", "title",            # print title (second line)
         "--no-warnings",
-        "--playlist-items", "1",       # only first item (works for both URLs and searches)
+        "--playlist-items", "1",
     ]
     if not progress:
         cmd.append("--quiet")
@@ -69,13 +72,21 @@ def fetch(source: str, progress: bool = True) -> tuple[Path, Optional[str]]:
     if result.returncode != 0:
         raise RuntimeError(f"yt-dlp failed:\n{result.stderr.strip()}")
 
-    title = result.stdout.strip().splitlines()[0] if result.stdout.strip() else None
+    lines = result.stdout.strip().splitlines()
+    video_id = lines[0].strip() if lines else None
+    title = lines[1].strip() if len(lines) > 1 else None
 
-    downloaded = list(AUDIO_CACHE_DIR.glob(f"{video_id}.*"))
-    if not downloaded:
-        raise RuntimeError("yt-dlp ran but no output file found")
+    if video_id:
+        downloaded = list(AUDIO_CACHE_DIR.glob(f"{video_id}.*"))
+        if downloaded:
+            return downloaded[0], title
 
-    return downloaded[0], title
+    # Fallback: pick the most recently modified mp3 in cache
+    mp3s = sorted(AUDIO_CACHE_DIR.glob("*.mp3"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if mp3s:
+        return mp3s[0], title
+
+    raise RuntimeError("yt-dlp ran but no output file found")
 
 
 def _extract_video_id(url: str) -> str:
