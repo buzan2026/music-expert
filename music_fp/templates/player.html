@@ -354,8 +354,14 @@ audio.addEventListener('playing', () => {
 audio.addEventListener('pause', () => { artwork.classList.remove('playing'); });
 audio.addEventListener('ended', () => {
   artwork.classList.remove('playing');
-  // Auto-advance to next track on end — vote as skipped
   vote('skipped');
+});
+
+audio.addEventListener('error', () => {
+  loadingRing.classList.remove('visible');
+  artwork.classList.remove('playing');
+  // Skip broken tracks silently
+  if (S.current && !S.voting) vote('skipped');
 });
 
 function loadAudio(trackId) {

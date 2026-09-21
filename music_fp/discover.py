@@ -264,13 +264,13 @@ def _fingerprint_and_enqueue(url: str, seed_artist: str) -> bool:
     return True
 
 
-def run_discovery_cycle(max_new: int = REFILL_TARGET) -> int:
+def run_discovery_cycle(max_new: int = REFILL_TARGET, metadata_only: bool = False) -> int:
     """
     Run one discovery cycle. Returns number of candidates added.
 
-    Downloads audio for each candidate (no fingerprinting) so tracks are
-    ready for <audio> playback. At most MAX_PER_ARTIST tracks enqueued per
-    artist per cycle; artists are shuffled for diversity.
+    By default downloads audio during discovery so tracks are ready for
+    immediate playback. Pass metadata_only=True for a fast seed pass (audio
+    will be downloaded on-demand when a track is first served).
     Set MUSIC_FP_FINGERPRINT=1 to enable full audio fingerprinting + scoring.
     """
     import random
@@ -316,6 +316,10 @@ def run_discovery_cycle(max_new: int = REFILL_TARGET) -> int:
                 url = (info.get("url") or info.get("webpage_url") or
                        (f"https://www.youtube.com/watch?v={vid}" if vid else None))
                 if url and _fingerprint_and_enqueue(url, seed_artist=artist):
+                    added += 1
+                    per_artist += 1
+            elif metadata_only:
+                if _enqueue_from_metadata(info, seed_artist=artist):
                     added += 1
                     per_artist += 1
             else:

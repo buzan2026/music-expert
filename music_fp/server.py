@@ -12,6 +12,7 @@ from .store import (
     pop_next_candidate,
     record_vote,
     get_vote_counts,
+    set_audio_path,
 )
 from .model import get_model
 
@@ -87,9 +88,19 @@ def audio(track_id: int):
     if not track:
         abort(404)
     audio_path = track.get("audio_path")
-    if not audio_path or not Path(audio_path).exists():
+    if audio_path and Path(audio_path).exists():
+        return send_file(audio_path, mimetype="audio/mpeg", conditional=True)
+    # Download on-demand for metadata-only tracks
+    source = track.get("source")
+    if not source:
         abort(404)
-    return send_file(audio_path, mimetype="audio/mpeg", conditional=True)
+    try:
+        from .download import fetch
+        dl_path, _ = fetch(source, progress=False)
+        set_audio_path(track_id, str(dl_path))
+        return send_file(str(dl_path), mimetype="audio/mpeg", conditional=True)
+    except Exception:
+        abort(404)
 
 
 @app.route("/api/stats")

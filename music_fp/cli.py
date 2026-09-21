@@ -374,8 +374,8 @@ def seed(
     else:
         console.print(f"[dim]No liked artists yet — seeding from {len(SEED_ARTISTS)} taste-profile artists.[/]")
 
-    with console.status("Searching YouTube metadata (no download)…"):
-        added = run_discovery_cycle(max_new=30)
+    with console.status("Searching YouTube metadata (audio loads on demand)…"):
+        added = run_discovery_cycle(max_new=30, metadata_only=True)
 
     console.print(f"[green]✓ {added} candidate(s) added to queue.[/]")
 
