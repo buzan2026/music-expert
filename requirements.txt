@@ -1,0 +1,10 @@
+fastapi>=0.111
+uvicorn[standard]>=0.29
+notion-client>=2.2
+pylast>=5.3
+yt-dlp>=2024.5
+scikit-learn>=1.4
+numpy>=1.26
+python-dotenv>=1.0
+httpx>=0.27
+aiofiles>=23.2

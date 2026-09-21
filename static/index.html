@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>music-boris</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- Track info -->
+  <div id="track-info">
+    <h1 id="track-title"></h1>
+    <p id="track-artist"></p>
+    <p id="track-year"></p>
+    <p id="track-seed" class="seed-label"></p>
+  </div>
+
+  <!-- YouTube audio-only player (height 90px, offset to hide video) -->
+  <div id="player-wrapper">
+    <iframe id="yt-player"
+      width="480" height="90"
+      frameborder="0"
+      allow="autoplay; encrypted-media"
+      allowfullscreen>
+    </iframe>
+  </div>
+
+  <!-- Verdict buttons -->
+  <div id="buttons">
+    <button id="btn-like"   onclick="verdict('LIKED')"    title="L">👍 J'aime</button>
+    <button id="btn-reject" onclick="verdict('REJECTED')" title="J">👎 Pas pour moi</button>
+    <button id="btn-skip"   onclick="verdict('SKIPPED')"  title="K">⏭ Passe</button>
+  </div>
+
+  <!-- Loading state -->
+  <div id="loading" style="display:none">
+    <span class="spinner"></span> Chargement de nouveaux candidats...
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
