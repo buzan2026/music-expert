@@ -53,13 +53,13 @@ def fetch(source: str, progress: bool = True) -> tuple[Path, Optional[str]]:
     out_template = str(AUDIO_CACHE_DIR / f"{video_id}.%(ext)s")
     cmd = [
         "yt-dlp",
-        "--no-playlist",
         "-x",                          # extract audio
         "--audio-format", "mp3",
         "--audio-quality", "0",        # best quality
         "-o", out_template,
         "--print", "title",            # print title to stdout
         "--no-warnings",
+        "--playlist-items", "1",       # only first item (works for both URLs and searches)
     ]
     if not progress:
         cmd.append("--quiet")
