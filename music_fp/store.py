@@ -16,21 +16,40 @@ def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     _init_schema(conn)
+    _migrate(conn)
     return conn
 
 
 def _init_schema(conn: sqlite3.Connection) -> None:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS tracks (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            source      TEXT NOT NULL UNIQUE,  -- URL or absolute path
-            title       TEXT,
-            duration    REAL,
-            label       TEXT NOT NULL DEFAULT 'untagged',
-            features    BLOB,                  -- numpy array serialised as .npy bytes
-            added_at    TEXT NOT NULL
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            source          TEXT NOT NULL UNIQUE,
+            title           TEXT,
+            artist          TEXT,
+            year            INTEGER,
+            notes           TEXT,
+            duration        REAL,
+            label           TEXT NOT NULL DEFAULT 'untagged',
+            features        BLOB,
+            feature_version INTEGER NOT NULL DEFAULT 1,
+            added_at        TEXT NOT NULL
         )
     """)
+    conn.commit()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Add columns that didn't exist in v1 schema."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(tracks)").fetchall()}
+    for col, typedef in [
+        ("artist", "TEXT"),
+        ("year", "INTEGER"),
+        ("notes", "TEXT"),
+        ("feature_version", "INTEGER NOT NULL DEFAULT 1"),
+    ]:
+        if col not in cols:
+            conn.execute(f"ALTER TABLE tracks ADD COLUMN {col} {typedef}")
     conn.commit()
 
 
@@ -50,32 +69,46 @@ def upsert_track(
     duration: Optional[float],
     label: str,
     features: np.ndarray,
+    artist: Optional[str] = None,
+    year: Optional[int] = None,
+    notes: Optional[str] = None,
+    feature_version: int = 2,
 ) -> int:
     """Insert or update a track; return its row id."""
+    from .fingerprint import FEATURE_VERSION
     conn = _connect()
     blob = _to_blob(features)
     existing = conn.execute("SELECT id FROM tracks WHERE source = ?", (source,)).fetchone()
     if existing:
         conn.execute(
-            "UPDATE tracks SET title=?, duration=?, label=?, features=? WHERE id=?",
-            (title, duration, label, blob, existing["id"]),
+            """UPDATE tracks SET title=?, artist=?, year=?, notes=?,
+               duration=?, label=?, features=?, feature_version=? WHERE id=?""",
+            (title, artist, year, notes, duration, label, blob, feature_version, existing["id"]),
         )
         conn.commit()
         return existing["id"]
     cur = conn.execute(
-        "INSERT INTO tracks (source, title, duration, label, features, added_at) VALUES (?,?,?,?,?,?)",
-        (source, title, duration, label, blob, datetime.utcnow().isoformat()),
+        """INSERT INTO tracks
+           (source, title, artist, year, notes, duration, label, features, feature_version, added_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+        (source, title, artist, year, notes, duration, label, blob, feature_version,
+         datetime.utcnow().isoformat()),
     )
     conn.commit()
     return cur.lastrowid
 
 
-def get_all_tracks(labeled_only: bool = False) -> list[dict]:
+def get_all_tracks(labeled_only: bool = False, label_filter: Optional[list[str]] = None) -> list[dict]:
     conn = _connect()
-    query = "SELECT id, source, title, duration, label, features, added_at FROM tracks"
-    if labeled_only:
-        query += " WHERE label IN ('liked','disliked')"
-    rows = conn.execute(query).fetchall()
+    query = "SELECT id, source, title, artist, year, notes, duration, label, features, feature_version, added_at FROM tracks"
+    params: list = []
+    if label_filter:
+        placeholders = ",".join("?" * len(label_filter))
+        query += f" WHERE label IN ({placeholders})"
+        params = label_filter
+    elif labeled_only:
+        query += " WHERE label NOT IN ('untagged')"
+    rows = conn.execute(query, params).fetchall()
     result = []
     for row in rows:
         d = dict(row)
