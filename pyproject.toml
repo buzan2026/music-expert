@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "music-fp"
+version = "0.1.0"
+description = "Audio fingerprint tool to predict music preferences"
+requires-python = ">=3.10"
+dependencies = [
+    "typer>=0.9",
+    "rich>=13",
+    "librosa>=0.10",
+    "yt-dlp>=2024",
+    "numpy>=1.24",
+    "scipy>=1.10",
+]
+
+[project.scripts]
+music-fp = "music_fp.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["music_fp*"]
