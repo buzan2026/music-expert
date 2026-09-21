@@ -355,6 +355,20 @@ def stats() -> None:
         console.print("\n  [green]→ Ready for supervised learning (≥50 labeled tracks).[/]")
 
 
+@app.command()
+def serve(
+    port: int = typer.Option(5000, "--port", "-p"),
+    host: str = typer.Option("127.0.0.1", "--host"),
+    no_discover: bool = typer.Option(False, "--no-discover", help="Disable background discovery worker"),
+) -> None:
+    """Start the listening interface (web player)."""
+    from .server import create_app
+
+    console.print(f"[bold]music-fp player[/]  →  http://{host}:{port}")
+    flask_app = create_app(start_worker=not no_discover)
+    flask_app.run(host=host, port=port, debug=False)
+
+
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
