@@ -59,13 +59,13 @@ def fetch(source: str, progress: bool = True) -> tuple[Path, Optional[str]]:
         "--audio-format", "mp3",
         "--audio-quality", "0",        # best quality
         "-o", out_template,
+        "--no-simulate",               # --print implies --quiet which enables simulate; force download
         "--print", "%(id)s",           # print video id to stdout (first line)
         "--print", "title",            # print title (second line)
         "--no-warnings",
         "--playlist-items", "1",
+        "--quiet",
     ]
-    if not progress:
-        cmd.append("--quiet")
     cmd.append(source)
 
     result = subprocess.run(cmd, capture_output=True, text=True)
