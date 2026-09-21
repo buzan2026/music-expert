@@ -77,6 +77,35 @@
     height: 100% !important;
     border: none !important;
   }
+  /* Autoplay gate — shown until user first clicks */
+  #autoplay-gate {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,.55);
+    cursor: pointer;
+    z-index: 20;
+    gap: 10px;
+    transition: opacity 200ms;
+  }
+  #autoplay-gate.hidden { opacity: 0; pointer-events: none; }
+  #autoplay-gate .play-icon {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.15);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2rem;
+    border: 2px solid rgba(255,255,255,.3);
+  }
+  #autoplay-gate span {
+    font-size: .8rem;
+    color: rgba(255,255,255,.7);
+    letter-spacing: .05em;
+  }
+
   #no-video {
     position: absolute;
     inset: 0;
@@ -209,6 +238,10 @@
   <div id="player-box">
     <div id="yt-player"></div>
     <div id="no-video">🎵</div>
+    <div id="autoplay-gate">
+      <div class="play-icon">▶</div>
+      <span>Cliquer pour démarrer</span>
+    </div>
   </div>
 
   <div id="track-meta">
@@ -263,10 +296,11 @@
 <script>
 // ── State ───────────────────────────────────────────────────────────────────
 const S = {
-  current:   null,   // current track object from API
-  voting:    false,  // lock to prevent double votes
-  ytPlayer:  null,   // YT.Player instance
-  ytReady:   false,  // player API ready
+  current:         null,
+  voting:          false,
+  ytPlayer:        null,
+  ytReady:         false,
+  autoplayUnlocked: false,
 };
 
 // ── YouTube IFrame API ───────────────────────────────────────────────────────
@@ -285,10 +319,14 @@ window.onYouTubeIframeAPIReady = function() {
     events: {
       onReady(e) {
         S.ytReady = true;
-        // If a track was loaded before the player was ready, play it now
+        // If a track was loaded before the player was ready, cue or play it
         if (S.current?.video_id) {
-          e.target.loadVideoById(S.current.video_id);
           document.getElementById('no-video').classList.add('hidden');
+          if (S.autoplayUnlocked) {
+            e.target.loadVideoById(S.current.video_id);
+          } else {
+            e.target.cueVideoById(S.current.video_id);
+          }
         }
       },
     },
@@ -299,10 +337,24 @@ function ytLoad(videoId) {
   if (!videoId) return;
   document.getElementById('no-video').classList.add('hidden');
   if (S.ytReady && S.ytPlayer) {
-    S.ytPlayer.loadVideoById(videoId);
+    if (S.autoplayUnlocked) {
+      S.ytPlayer.loadVideoById(videoId);
+    } else {
+      // Cue the video without playing — gate overlay stays visible
+      S.ytPlayer.cueVideoById(videoId);
+    }
   }
-  // else: onReady will call loadVideoById when it fires
+  // else: onReady will handle it
 }
+
+// Autoplay gate — one click unlocks audio for the whole session
+document.getElementById('autoplay-gate').addEventListener('click', () => {
+  S.autoplayUnlocked = true;
+  document.getElementById('autoplay-gate').classList.add('hidden');
+  if (S.ytReady && S.ytPlayer && S.current?.video_id) {
+    S.ytPlayer.loadVideoById(S.current.video_id);
+  }
+});
 
 // ── API helpers ──────────────────────────────────────────────────────────────
 async function fetchCurrent() {
