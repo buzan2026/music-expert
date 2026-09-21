@@ -61,23 +61,33 @@
     pointer-events: none;
   }
 
-  /* ── YouTube player box ── */
-  #player-box {
+  /* ── Artwork area ── */
+  #artwork {
     position: relative;
     width: 100%;
-    aspect-ratio: 16 / 9;
-    background: #000;
+    aspect-ratio: 1;
+    background: linear-gradient(135deg, #111 0%, #0d0d1e 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
     overflow: hidden;
   }
-  /* The iframe injected by YT API must fill the box */
-  #player-box > iframe {
-    position: absolute !important;
-    inset: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    border: none !important;
+  #artwork-emoji {
+    font-size: 96px;
+    opacity: .18;
+    user-select: none;
+    transition: opacity 300ms;
   }
-  /* Autoplay gate — shown until user first clicks */
+  #artwork.playing #artwork-emoji {
+    opacity: .35;
+    animation: breathe 3s ease-in-out infinite;
+  }
+  @keyframes breathe {
+    0%, 100% { transform: scale(1);   opacity: .28; }
+    50%       { transform: scale(1.06); opacity: .45; }
+  }
+
+  /* Autoplay gate */
   #autoplay-gate {
     position: absolute;
     inset: 0;
@@ -93,35 +103,46 @@
   }
   #autoplay-gate.hidden { opacity: 0; pointer-events: none; }
   #autoplay-gate .play-icon {
-    width: 64px; height: 64px;
+    width: 72px; height: 72px;
     border-radius: 50%;
     background: rgba(255,255,255,.15);
     display: flex; align-items: center; justify-content: center;
-    font-size: 2rem;
+    font-size: 2.2rem;
     border: 2px solid rgba(255,255,255,.3);
   }
   #autoplay-gate span {
-    font-size: .8rem;
-    color: rgba(255,255,255,.7);
+    font-size: .85rem;
+    color: rgba(255,255,255,.75);
     letter-spacing: .05em;
   }
 
-  #no-video {
+  /* Progress bar */
+  #progress-bar {
     position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 72px;
-    background: linear-gradient(135deg, #111, #0a0a22);
-    transition: opacity 300ms;
+    bottom: 0; left: 0;
+    height: 3px;
+    width: 0%;
+    background: var(--accent);
+    transition: width 1s linear;
   }
-  #no-video.hidden { opacity: 0; pointer-events: none; }
+
+  /* Loading spinner */
+  #loading-ring {
+    position: absolute;
+    width: 56px; height: 56px;
+    border: 3px solid rgba(168,85,247,.15);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 900ms linear infinite;
+    display: none;
+  }
+  #loading-ring.visible { display: block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   /* ── Track info ── */
   #track-meta {
     padding: 20px 24px 8px;
-    min-height: 68px;
+    min-height: 72px;
   }
   #artist {
     font-size: .8rem;
@@ -141,6 +162,12 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  #time-display {
+    font-size: .72rem;
+    color: var(--muted);
+    margin-top: 6px;
+    font-variant-numeric: tabular-nums;
   }
 
   /* ── Vote buttons ── */
@@ -208,7 +235,7 @@
   #dot-disc.active { opacity: 1; }
   @keyframes pulse {
     0%, 100% { transform: scale(.8); }
-    50% { transform: scale(1.4); }
+    50%       { transform: scale(1.4); }
   }
 
   /* ── Empty state ── */
@@ -235,9 +262,10 @@
 <div id="header">music-boris</div>
 
 <div id="card">
-  <div id="player-box">
-    <div id="yt-player"></div>
-    <div id="no-video">🎵</div>
+  <div id="artwork">
+    <div id="artwork-emoji">🎵</div>
+    <div id="loading-ring"></div>
+    <div id="progress-bar"></div>
     <div id="autoplay-gate">
       <div class="play-icon">▶</div>
       <span>Cliquer pour démarrer</span>
@@ -247,6 +275,7 @@
   <div id="track-meta">
     <div id="artist"></div>
     <div id="title">Chargement…</div>
+    <div id="time-display"></div>
   </div>
 
   <div id="buttons">
@@ -284,75 +313,68 @@
   <p class="sub">De nouveaux morceaux arrivent bientôt.<br>Reviens dans quelques instants.</p>
 </div>
 
-<!-- YouTube IFrame API -->
-<script>
-(function() {
-  const s = document.createElement('script');
-  s.src = 'https://www.youtube.com/iframe_api';
-  document.head.appendChild(s);
-})();
-</script>
+<!-- Hidden audio element -->
+<audio id="audio" preload="auto"></audio>
 
 <script>
 // ── State ───────────────────────────────────────────────────────────────────
 const S = {
-  current:         null,
-  voting:          false,
-  ytPlayer:        null,
-  ytReady:         false,
+  current:          null,
+  voting:           false,
   autoplayUnlocked: false,
 };
 
-// ── YouTube IFrame API ───────────────────────────────────────────────────────
-window.onYouTubeIframeAPIReady = function() {
-  S.ytPlayer = new YT.Player('yt-player', {
-    height: '315',
-    width:  '560',
-    playerVars: {
-      autoplay:       1,
-      rel:            0,
-      modestbranding: 1,
-      playsinline:    1,
-      fs:             1,
-      iv_load_policy: 3,
-    },
-    events: {
-      onReady(e) {
-        S.ytReady = true;
-        // If a track was loaded before the player was ready, cue or play it
-        if (S.current?.video_id) {
-          document.getElementById('no-video').classList.add('hidden');
-          if (S.autoplayUnlocked) {
-            e.target.loadVideoById(S.current.video_id);
-          } else {
-            e.target.cueVideoById(S.current.video_id);
-          }
-        }
-      },
-    },
-  });
-};
+const audio        = document.getElementById('audio');
+const artwork      = document.getElementById('artwork');
+const loadingRing  = document.getElementById('loading-ring');
+const progressBar  = document.getElementById('progress-bar');
+const timeDisplay  = document.getElementById('time-display');
 
-function ytLoad(videoId) {
-  if (!videoId) return;
-  document.getElementById('no-video').classList.add('hidden');
-  if (S.ytReady && S.ytPlayer) {
-    if (S.autoplayUnlocked) {
-      S.ytPlayer.loadVideoById(videoId);
-    } else {
-      // Cue the video without playing — gate overlay stays visible
-      S.ytPlayer.cueVideoById(videoId);
-    }
-  }
-  // else: onReady will handle it
+// ── Audio helpers ────────────────────────────────────────────────────────────
+function fmt(sec) {
+  if (!sec || isNaN(sec)) return '';
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
 }
 
-// Autoplay gate — one click unlocks audio for the whole session
+audio.addEventListener('timeupdate', () => {
+  if (!audio.duration) return;
+  const pct = (audio.currentTime / audio.duration) * 100;
+  progressBar.style.width = pct + '%';
+  timeDisplay.textContent = `${fmt(audio.currentTime)} / ${fmt(audio.duration)}`;
+});
+
+audio.addEventListener('waiting', () => { loadingRing.classList.add('visible'); });
+audio.addEventListener('canplay', () => { loadingRing.classList.remove('visible'); });
+audio.addEventListener('playing', () => {
+  loadingRing.classList.remove('visible');
+  artwork.classList.add('playing');
+});
+audio.addEventListener('pause', () => { artwork.classList.remove('playing'); });
+audio.addEventListener('ended', () => {
+  artwork.classList.remove('playing');
+  // Auto-advance to next track on end — vote as skipped
+  vote('skipped');
+});
+
+function loadAudio(trackId) {
+  audio.src = `/audio/${trackId}`;
+  progressBar.style.width = '0%';
+  timeDisplay.textContent = '';
+  if (S.autoplayUnlocked) {
+    loadingRing.classList.add('visible');
+    audio.play().catch(() => {});
+  }
+}
+
+// ── Autoplay gate ────────────────────────────────────────────────────────────
 document.getElementById('autoplay-gate').addEventListener('click', () => {
   S.autoplayUnlocked = true;
   document.getElementById('autoplay-gate').classList.add('hidden');
-  if (S.ytReady && S.ytPlayer && S.current?.video_id) {
-    S.ytPlayer.loadVideoById(S.current.video_id);
+  if (S.current) {
+    loadingRing.classList.add('visible');
+    audio.play().catch(() => {});
   }
 });
 
@@ -377,14 +399,8 @@ async function sendVote(trackId, vote) {
 function renderTrack(track) {
   document.getElementById('artist').textContent = track.artist || '';
   document.getElementById('title').textContent  = track.title  || 'Titre inconnu';
-
-  if (track.video_id) {
-    ytLoad(track.video_id);
-  } else {
-    document.getElementById('no-video').classList.remove('hidden');
-  }
-
   if (track.stats) updateStats(track.stats);
+  loadAudio(track.track_id);
 }
 
 function updateStats(stats) {
@@ -396,12 +412,14 @@ function updateStats(stats) {
 }
 
 function showCard() {
-  document.getElementById('card').style.display       = '';
+  document.getElementById('card').style.display        = '';
   document.getElementById('empty-state').style.display = 'none';
 }
 
 function showEmpty() {
-  document.getElementById('card').style.display       = 'none';
+  audio.pause();
+  artwork.classList.remove('playing');
+  document.getElementById('card').style.display        = 'none';
   document.getElementById('empty-state').style.display = 'flex';
   setTimeout(loadCurrent, 5000);
 }
@@ -427,13 +445,13 @@ async function vote(v) {
   if (!S.current || S.voting) return;
   S.voting = true;
 
-  const card = document.getElementById('card');
+  audio.pause();
+  artwork.classList.remove('playing');
 
-  // Animate out + fire API call in parallel
+  const card = document.getElementById('card');
   card.classList.add('out');
   const voteP = sendVote(S.current.track_id, v).catch(() => ({}));
 
-  // Wait for CSS transition
   await new Promise(res => setTimeout(res, 240));
 
   let data = {};
@@ -443,7 +461,6 @@ async function vote(v) {
     S.current = data.next;
     renderTrack(data.next);
     if (data.stats) updateStats(data.stats);
-    // Brief pause before fade-in so DOM updates are painted
     await new Promise(res => setTimeout(res, 16));
     card.classList.remove('out');
     showCard();

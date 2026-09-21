@@ -27,6 +27,7 @@ MIN_QUEUE_SIZE = 5
 REFILL_TARGET = 15
 SEARCH_PER_ARTIST = 8
 SCORE_THRESHOLD = 0.35
+MAX_PER_ARTIST = 2   # max candidates enqueued per artist per cycle
 
 # Seed artists that match Boris's taste profile (funky bass, dry drums,
 # sensual vocals, mid-up tempo, readable mix).
@@ -166,6 +167,54 @@ def _enqueue_from_metadata(info: dict, seed_artist: str) -> bool:
         return False
 
 
+def _download_and_enqueue(info: dict, seed_artist: str) -> bool:
+    """
+    Download audio from a yt-dlp flat-playlist result and enqueue.
+    No fingerprinting — audio only, suitable for <audio> playback.
+    """
+    from .store import already_seen, upsert_track, enqueue_candidate
+    from .download import fetch
+
+    vid = info.get("id")
+    if not vid or len(vid) != 11:
+        return False
+
+    url = f"https://www.youtube.com/watch?v={vid}"
+    if already_seen(url):
+        return False
+
+    title = info.get("title") or info.get("fulltitle") or ""
+    low = title.lower()
+    if any(kw in low for kw in _SKIP_KEYWORDS):
+        return False
+
+    duration = info.get("duration")
+    if duration and (duration < 60 or duration > 600):
+        return False
+
+    try:
+        audio_path, fetched_title = fetch(url, progress=False)
+    except Exception:
+        return False
+
+    display_title = fetched_title or title
+
+    try:
+        track_id = upsert_track(
+            source=url,
+            title=display_title,
+            duration=float(duration) if duration else None,
+            label="untagged",
+            features=None,
+            artist=seed_artist,
+            audio_path=str(audio_path),
+        )
+        enqueue_candidate(track_id, score=0.5, seed_artist=seed_artist, source="yt_audio")
+        return True
+    except Exception:
+        return False
+
+
 def _fingerprint_and_enqueue(url: str, seed_artist: str) -> bool:
     """Download, fingerprint (mix only), score, and enqueue. Returns True on success."""
     from .store import already_seen, upsert_track, enqueue_candidate
@@ -219,9 +268,12 @@ def run_discovery_cycle(max_new: int = REFILL_TARGET) -> int:
     """
     Run one discovery cycle. Returns number of candidates added.
 
-    Uses metadata-only enqueueing by default (fast, no download).
-    Set MUSIC_FP_FINGERPRINT=1 to enable audio fingerprinting for scoring.
+    Downloads audio for each candidate (no fingerprinting) so tracks are
+    ready for <audio> playback. At most MAX_PER_ARTIST tracks enqueued per
+    artist per cycle; artists are shuffled for diversity.
+    Set MUSIC_FP_FINGERPRINT=1 to enable full audio fingerprinting + scoring.
     """
+    import random
     from .store import pending_candidate_count
 
     already = pending_candidate_count()
@@ -246,14 +298,18 @@ def run_discovery_cycle(max_new: int = REFILL_TARGET) -> int:
             seen_a.add(a.lower())
             unique_artists.append(a)
 
+    # Shuffle for diversity — don't exhaust one artist before moving on
+    random.shuffle(unique_artists)
+
     added = 0
     for artist in unique_artists:
         if added >= need:
             break
         query = f"{artist} official"
         candidates = _yt_search_metadata(query, n=SEARCH_PER_ARTIST)
+        per_artist = 0
         for info in candidates:
-            if added >= need:
+            if added >= need or per_artist >= MAX_PER_ARTIST:
                 break
             if use_fingerprint:
                 vid = info.get("id")
@@ -261,9 +317,11 @@ def run_discovery_cycle(max_new: int = REFILL_TARGET) -> int:
                        (f"https://www.youtube.com/watch?v={vid}" if vid else None))
                 if url and _fingerprint_and_enqueue(url, seed_artist=artist):
                     added += 1
+                    per_artist += 1
             else:
-                if _enqueue_from_metadata(info, seed_artist=artist):
+                if _download_and_enqueue(info, seed_artist=artist):
                     added += 1
+                    per_artist += 1
 
     return added
 
