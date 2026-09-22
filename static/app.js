@@ -1,6 +1,7 @@
 /* music-boris frontend */
 let currentTrack = null;
 let isLoading = false;
+let _retryDelay = 4000;
 
 async function loadNext() {
   if (isLoading) return;
@@ -13,10 +14,11 @@ async function loadNext() {
     const track = await res.json();
 
     if (!track.ready || !track.yt_id) {
-      showLoading();
+      scheduleRetry();
       return;
     }
 
+    _retryDelay = 4000;  // reset backoff on success
     currentTrack = track;
     document.getElementById('track-title').textContent  = track.title;
     document.getElementById('track-artist').textContent = track.artist;
@@ -29,13 +31,18 @@ async function loadNext() {
 
     document.getElementById('buttons').style.display = 'flex';
   } catch (e) {
-    showLoading();
+    scheduleRetry();
   } finally {
     isLoading = false;
   }
 }
 
-function showLoading() {
+function scheduleRetry() {
+  showLoading(_retryDelay);
+  _retryDelay = Math.min(_retryDelay * 2, 60000);
+}
+
+function showLoading(delay = 4000) {
   document.getElementById('loading').style.display  = 'block';
   document.getElementById('buttons').style.display  = 'none';
   document.getElementById('track-title').textContent  = '';
@@ -43,7 +50,7 @@ function showLoading() {
   document.getElementById('track-year').textContent   = '';
   document.getElementById('track-seed').textContent   = '';
   document.getElementById('yt-player').src = '';
-  setTimeout(loadNext, 4000);
+  setTimeout(loadNext, delay);
 }
 
 function hideLoading() {
