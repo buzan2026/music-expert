@@ -46,24 +46,61 @@ async def _pool_monitor() -> None:
         await asyncio.sleep(60)
 
 
+async def _check_connections() -> dict:
+    """Vérifie Last.fm et Notion au démarrage, affiche un résumé clair."""
+    status = {}
+
+    # Last.fm
+    try:
+        import pylast
+        network = pylast.LastFMNetwork(api_key=os.environ["LASTFM_API_KEY"])
+        network.get_artist("RAYE").get_similar(limit=1)
+        status["lastfm"] = "✓ Last.fm OK"
+    except KeyError:
+        status["lastfm"] = "✗ Last.fm : LASTFM_API_KEY manquant dans .env"
+    except Exception as e:
+        status["lastfm"] = f"✗ Last.fm : {e}"
+
+    # Notion
+    try:
+        from app.notion import _client, ARTISTES_DB
+        client = _client()
+        await client.databases.retrieve(database_id=ARTISTES_DB)
+        status["notion"] = "✓ Notion OK"
+    except KeyError:
+        status["notion"] = "✗ Notion : NOTION_TOKEN manquant dans .env"
+    except Exception as e:
+        status["notion"] = f"✗ Notion : {e}"
+
+    return status
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _exclusion_set, _bg_task
 
     init_db()
-    log.info("DB ready")
 
-    log.info("Running bootstrap (yt-dlp lookups for missing IDs)…")
+    print("\n" + "="*50)
+    print("  music-boris — vérification des connexions")
+    print("="*50)
+    checks = await _check_connections()
+    for v in checks.values():
+        print(" ", v)
+    print("="*50 + "\n")
+
+    log.info("Bootstrap en cours…")
     seed_bootstrap(get_yt_id_sync)
-    log.info("Bootstrap done")
+    log.info("Bootstrap OK (%s)", count_verdicts())
 
-    try:
-        _exclusion_set = await load_exclusion_set()
-    except Exception as e:
-        log.warning("Notion exclusion set unavailable (check NOTION_TOKEN): %s", e)
+    if "✓" in checks.get("notion", ""):
+        try:
+            _exclusion_set = await load_exclusion_set()
+        except Exception as e:
+            log.warning("Notion exclusion set : %s", e)
 
     _bg_task = asyncio.create_task(_pool_monitor())
-    log.info("Pool monitor started")
+    log.info("Prêt sur http://localhost:8000")
 
     yield
 
