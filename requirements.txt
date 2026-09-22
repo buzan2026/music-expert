@@ -1,6 +1,6 @@
 fastapi>=0.111
 uvicorn[standard]>=0.29
-notion-client>=2.2
+notion-client>=2.2,<3
 pylast>=5.3
 yt-dlp>=2024.5
 scikit-learn>=1.4

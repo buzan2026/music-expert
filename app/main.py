@@ -181,9 +181,7 @@ async def api_verdict(req: VerdictIn):
             "similarity_score": req.similarity_score or 0.0,
         }
         asyncio.create_task(
-            asyncio.get_event_loop().run_in_executor(
-                None, _sync_model_update, track, req.verdict
-            )
+            asyncio.to_thread(_sync_model_update, track, req.verdict)
         )
 
     return {"ok": True}

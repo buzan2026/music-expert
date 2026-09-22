@@ -83,21 +83,32 @@ def pick_next(candidates: list[dict], old_skipped: list[dict],
 
 # ── model update ─────────────────────────────────────────────────────────────
 
+_tag_counts: dict[str, int] = {}
+
+
 def update_model(liked: list[dict], rejected: list[dict]) -> None:
-    global _model, _top_tags, _seed_artists
+    global _model, _top_tags, _seed_artists, _tag_counts
     from sklearn.linear_model import SGDClassifier
 
     all_c = liked + rejected
     if not all_c:
         return
 
-    # Rebuild top tags from liked
-    tag_counts: dict[str, int] = {}
+    # Accumulate tag counts from liked (never shrink)
     for c in liked:
         for t in json.loads(c.get("tags_json") or "[]"):
-            tag_counts[t.lower()] = tag_counts.get(t.lower(), 0) + 1
-    _top_tags = sorted(tag_counts, key=lambda k: tag_counts[k], reverse=True)[:50]
-    _seed_artists = list({c.get("seed_artist", "") for c in all_c})
+            _tag_counts[t.lower()] = _tag_counts.get(t.lower(), 0) + 1
+
+    new_top_tags = sorted(_tag_counts, key=lambda k: _tag_counts[k], reverse=True)[:50]
+    new_seed_artists = list(set(_seed_artists) | {c.get("seed_artist", "") for c in all_c})
+
+    # If feature dimensions changed, reset the model to avoid mismatch
+    if new_top_tags != _top_tags or set(new_seed_artists) != set(_seed_artists):
+        if _model is not None:
+            log.info("Feature dimensions changed — resetting model")
+            _model = None
+        _top_tags = new_top_tags
+        _seed_artists = new_seed_artists
 
     X = _features(all_c)
     y = [1] * len(liked) + [0] * len(rejected)
