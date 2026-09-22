@@ -106,6 +106,14 @@ def get_liked_artists() -> list[str]:
     return [r["artist"] for r in rows]
 
 
+def get_liked_tracks() -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT artist, title, yt_id, year FROM verdicts WHERE verdict='LIKED'"
+        ).fetchall()
+    return [{"artist": r["artist"], "title": r["title"], "yt_id": r["yt_id"], "year": r["year"]} for r in rows]
+
+
 def get_all_seen_permanent() -> set[tuple[str, str]]:
     """LIKED + REJECTED — never show again."""
     with get_conn() as conn:

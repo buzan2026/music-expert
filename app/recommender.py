@@ -116,62 +116,62 @@ def update_model(liked: list[dict], rejected: list[dict]) -> None:
 
 async def fill_pool(exclusion_set: set[str]) -> None:
     async with _fill_lock:
-        from app.db import (pool_size, get_liked_artists, get_all_seen_permanent,
+        from app.db import (pool_size, get_liked_tracks, get_all_seen_permanent,
                              get_recent_skipped, enqueue_candidate)
-        from app.lastfm import get_similar_artists, get_top_tracks, get_artist_info
+        from app.lastfm import get_similar_tracks, get_artist_info
         from app.youtube import get_yt_id
 
         if pool_size() >= POOL_MIN:
             return
 
         seen = get_all_seen_permanent() | get_recent_skipped()
-        liked_artists = get_liked_artists()
-        if not liked_artists:
-            log.info("Pool fill: no liked artists yet")
+        liked_tracks = get_liked_tracks()
+        if not liked_tracks:
+            log.info("Pool fill: no liked tracks yet")
             return
 
         added = 0
-        for seed in liked_artists:
+        for liked in liked_tracks:
             if added >= 60:
                 break
 
-            similar = await get_similar_artists(seed, limit=30)
-            if len(similar) < 3:
-                log.info("Pool fill: too few similar for %s, skipping seed", seed)
+            similar = await get_similar_tracks(liked["artist"], liked["title"], limit=20)
+            if not similar:
+                log.info("Pool fill: no similar tracks for %s — %s", liked["artist"], liked["title"])
                 continue
 
             for sim in similar:
-                name = sim["name"]
-                if name.lower() in exclusion_set:
+                if added >= 60:
+                    break
+                artist_name = sim["artist"]
+                title = sim["title"]
+
+                if artist_name.lower() in exclusion_set:
+                    continue
+                key = (artist_name.lower(), title.lower())
+                if key in seen:
                     continue
 
-                info = await get_artist_info(name)
-                tracks = await get_top_tracks(name, limit=5)
+                info = await get_artist_info(artist_name)
+                yt_id = await get_yt_id(artist_name, title)
+                if not yt_id:
+                    continue
 
-                for track in tracks:
-                    key = (name.lower(), track["title"].lower())
-                    if key in seen:
-                        continue
-
-                    yt_id = await get_yt_id(name, track["title"])
-                    if not yt_id:
-                        continue
-
-                    score = _bootstrap_score(info.get("playcount", 0))
-                    enqueue_candidate(
-                        artist=name,
-                        title=track["title"],
-                        yt_id=yt_id,
-                        year=None,
-                        playcount=info.get("playcount", 0),
-                        listeners=info.get("listeners", 0),
-                        tags=info.get("tags", []),
-                        seed_artist=seed,
-                        similarity_score=sim["match"],
-                        score=score,
-                    )
-                    seen.add(key)
-                    added += 1
-                    log.info("Pool: +%s — %s (seed=%s)", name, track["title"], seed)
+                score = _bootstrap_score(info.get("playcount", 0))
+                enqueue_candidate(
+                    artist=artist_name,
+                    title=title,
+                    yt_id=yt_id,
+                    year=None,
+                    playcount=info.get("playcount", 0),
+                    listeners=info.get("listeners", 0),
+                    tags=info.get("tags", []),
+                    seed_artist=liked["artist"],
+                    similarity_score=sim["match"],
+                    score=score,
+                )
+                seen.add(key)
+                added += 1
+                log.info("Pool: +%s — %s (seed=%s — %s)", artist_name, title, liked["artist"], liked["title"])
 
         log.info("Pool fill done: added=%d pool_size=%d", added, pool_size())

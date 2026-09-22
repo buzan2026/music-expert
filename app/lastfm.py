@@ -48,6 +48,21 @@ async def get_top_tracks(artist_name: str, limit: int = 5) -> list[dict]:
     return await _run(_fetch)
 
 
+async def get_similar_tracks(artist_name: str, title: str, limit: int = 20) -> list[dict]:
+    """Returns [{artist, title, match}] or [] on failure."""
+    def _fetch():
+        try:
+            track = _network().get_track(artist_name, title)
+            return [
+                {"artist": s.item.artist.name, "title": s.item.title, "match": float(s.match or 0)}
+                for s in track.get_similar(limit=limit)
+            ]
+        except Exception as e:
+            log.warning("Last.fm getSimilarTracks(%s - %s): %s", artist_name, title, e)
+            return []
+    return await _run(_fetch)
+
+
 async def get_artist_info(artist_name: str) -> dict:
     """Returns {listeners, playcount, tags[]}."""
     def _fetch():
