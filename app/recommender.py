@@ -118,7 +118,7 @@ async def fill_pool(exclusion_set: set[str]) -> None:
     async with _fill_lock:
         from app.db import (pool_size, get_liked_tracks, get_all_seen_permanent,
                              get_recent_skipped, enqueue_candidate)
-        from app.lastfm import get_similar_tracks, get_artist_info
+        from app.lastfm import get_similar_tracks, get_similar_artists, get_top_tracks, get_artist_info
         from app.youtube import get_yt_id
 
         if pool_size() >= POOL_MIN:
@@ -135,16 +135,32 @@ async def fill_pool(exclusion_set: set[str]) -> None:
             if added >= 60:
                 break
 
-            similar = await get_similar_tracks(liked["artist"], liked["title"], limit=20)
-            if not similar:
-                log.info("Pool fill: no similar tracks for %s — %s", liked["artist"], liked["title"])
-                continue
+            # Primary: track-level similarity
+            candidates_to_add = []
+            similar_tracks = await get_similar_tracks(liked["artist"], liked["title"], limit=20)
+            if similar_tracks:
+                candidates_to_add = [
+                    {"artist": s["artist"], "title": s["title"], "match": s["match"]}
+                    for s in similar_tracks
+                ]
+                log.info("Track.getSimilar: %d results for %s — %s", len(candidates_to_add), liked["artist"], liked["title"])
+            else:
+                # Fallback: find similar artists, take their top tracks
+                log.info("Pool fill: no track-similar for %s — %s, falling back to artist-similar", liked["artist"], liked["title"])
+                similar_artists = await get_similar_artists(liked["artist"], limit=15)
+                for sim_artist in similar_artists[:10]:
+                    name = sim_artist["name"]
+                    if name.lower() in exclusion_set:
+                        continue
+                    tracks = await get_top_tracks(name, limit=3)
+                    for t in tracks:
+                        candidates_to_add.append({"artist": name, "title": t["title"], "match": sim_artist["match"]})
 
-            for sim in similar:
+            for cand in candidates_to_add:
                 if added >= 60:
                     break
-                artist_name = sim["artist"]
-                title = sim["title"]
+                artist_name = cand["artist"]
+                title = cand["title"]
 
                 if artist_name.lower() in exclusion_set:
                     continue
@@ -167,7 +183,7 @@ async def fill_pool(exclusion_set: set[str]) -> None:
                     listeners=info.get("listeners", 0),
                     tags=info.get("tags", []),
                     seed_artist=liked["artist"],
-                    similarity_score=sim["match"],
+                    similarity_score=cand["match"],
                     score=score,
                 )
                 seen.add(key)
